@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Use correct character set. -->
+  <meta charset="utf-8" />
+  <!-- Tell IE to use the latest, best version. -->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no" />
+  <title>Hello World!</title>
+</head>
+
+<body>
+  <div id="cesiumContainer"></div>
+  <canvas id="outputCanvas"></canvas>
+
+  <!-- base -->
+  <link rel="stylesheet" href="./common/base.css">
+  <script src="../../Build/CesiumUnminified/Cesium.js"></script>
+  <script src="./methods.js"></script>
+  <!-- base end -->
+
+  <script>
+    const viewer = new Cesium.Viewer("cesiumContainer");
+
+    // 创建FBO
+    const fbo = createFrameBuffer(viewer.scene.context);
+    const renderTilesetPassState = new Cesium.Cesium3DTilePassState({
+      pass: Cesium.Cesium3DTilePass.RENDER
+    });
+
+    // 每帧执行离屏渲染并输出到辅助Canvas
+    viewer.scene.preRender.addEventListener((scene, time) => {
+      renderToFbo(fbo, viewer.scene);
+      saveFBOToCanvas(fbo, document.getElementById("outputCanvas"));
+    })
+
+    // 将FBO渲染的场景保存到Canvas中
+    const saveFBOToCanvas = (fbo, canvas) => {
+      const ctx = canvas.getContext("2d");
+
+      const { drawingBufferWidth, drawingBufferHeight } = viewer.scene.context;
+      const pixels = viewer.scene.context.readPixels({
+        x: 0,
+        y: 0,
+        width: drawingBufferWidth,
+        height: drawingBufferHeight,
+        framebuffer: fbo,
+      });
+      canvas.width = drawingBufferWidth;
+      canvas.height = drawingBufferHeight;
+
+      const imgData = new ImageData(
+        new Uint8ClampedArray(pixels),
+        drawingBufferWidth,
+        drawingBufferHeight
+      );
+      ctx.putImageData(imgData, 0, 0, 0, 0, drawingBufferWidth, drawingBufferHeight);
+      ctx.translate(0, drawingBufferHeight);
+      ctx.scale(1, -1);
+      ctx.drawImage(canvas, 0, 0);
+      canvas.style.height = (drawingBufferHeight * 0.3) + "px";
+      canvas.style.width = (drawingBufferWidth * 0.3) + "px";
+    }
+
+
+    // 与scene的render方法完全类似，只是将场景渲染到FBO中， 注释内容为离屏渲染可以不需要的内容
+    const renderToFbo = (fbo, scene) => {
+      const frameState = scene._frameState;
+      const context = scene.context;
+      const us = context.uniformState;
+
+      const view = scene._defaultView;
+      scene._view = view;
+
+      scene.updateFrameState();
+      frameState.passes.render = true;
+      frameState.passes.postProcess = scene.postProcessStages.hasSelected;
+      frameState.tilesetPassState = renderTilesetPassState;
+
+      let backgroundColor = Cesium.defaultValue(scene.backgroundColor, Cesium.Color.BLACK);
+      // if (scene._hdr) {
+      //   backgroundColor = Cesium.Color.clone(backgroundColor, scratchBackgroundColor);
+      //   backgroundColor.red = Cesium.Math.pow(backgroundColor.red, scene.gamma);
+      //   backgroundColor.green = Cesium.Math.pow(backgroundColor.green, scene.gamma);
+      //   backgroundColor.blue = Cesium.Math.pow(backgroundColor.blue, scene.gamma);
+      // }
+      frameState.backgroundColor = backgroundColor;
+
+      frameState.atmosphere = scene.atmosphere;
+      scene.fog.update(frameState);
+
+      us.update(frameState);
+
+      // const shadowMap = scene.shadowMap;
+      // if (Cesium.defined(shadowMap) && shadowMap.enabled) {
+      //   if (!Cesium.defined(scene.light) || scene.light instanceof SunLight) {
+      //     // Negate the sun direction so that it is from the Sun, not to the Sun
+      //     Cesium.Cartesian3.negate(us.sunDirectionWC, scene._shadowMapCamera.direction);
+      //   } else {
+      //     Cesium.Cartesian3.clone(scene.light.direction, scene._shadowMapCamera.direction);
+      //   }
+      //   frameState.shadowMaps.push(shadowMap);
+      // }
+
+      scene._computeCommandList.length = 0;
+      scene._overlayCommandList.length = 0;
+
+      const viewport = view.viewport;
+      viewport.x = 0;
+      viewport.y = 0;
+      viewport.width = context.drawingBufferWidth;
+      viewport.height = context.drawingBufferHeight;
+
+      const passState = view.passState;
+      // 设置FBO 使得当前帧渲染的场景保存到FBO中
+      passState.framebuffer = fbo;
+      passState.blendingEnabled = undefined;
+      passState.scissorTest = undefined;
+      passState.viewport = Cesium.BoundingRectangle.clone(viewport, passState.viewport);
+
+      // if (Cesium.defined(scene.globe)) {
+      //   scene.globe.beginFrame(frameState);
+      // }
+
+      scene.updateEnvironment();
+      scene.updateAndExecuteCommands(passState, backgroundColor);
+      scene.resolveFramebuffers(passState);
+
+      passState.framebuffer = undefined;
+      //executeOverlayCommands(scene, passState);
+
+      // if (Cesium.defined(scene.globe)) {
+      //   scene.globe.endFrame(frameState);
+      //   if (!scene.globe.tilesLoaded) {
+      //     scene._renderRequested = true;
+      //   }
+      // }
+
+      context.endFrame();
+      scene.globe.show = true;
+    }
+
+  </script>
+</body>
+
+</html>
