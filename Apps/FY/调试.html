@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>调试工具🔧</title>
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <canvas id="outputCanvas"></canvas>
+
+    <!-- base -->
+    <script src="https://cdn.jsdelivr.net/npm/spectorjs@0.9.30/dist/spector.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
+    <link rel="stylesheet" href="./common/base.css">
+    <script src="../../Build/CesiumUnminified/Cesium.js"></script>
+    <script src="common/methods.js"></script>
+    <!-- base end -->
+
+    <script>
+        const viewer = new Cesium.Viewer("cesiumContainer");
+
+        // 创建Spector实例并显示UI
+        var spector = new SPECTOR.Spector();
+        spector.displayUI();
+
+        // 添加Cesium 3D Tiles Inspector
+        viewer.extend(Cesium.viewerCesium3DTilesInspectorMixin);
+
+        // 显示帧率
+        viewer.scene.debugShowFramesPerSecond = true;
+
+        // 构建gui controller
+        const gui = new dat.GUI();
+        var testValue = {
+            number: 10,
+            color: '#66ccff',
+            speed: 1,
+            isVisible: true
+        };
+        var folder = gui.addFolder('测试GUI面板');
+        // 滑动条类型【gui.add(object, key, min, max, step)】
+        folder.add(testValue, "number", 5, 175, 1).name("值滑动");
+        // 颜色类型
+        folder.addColor(testValue, "color").name("颜色");
+        // 下拉框类型
+        folder.add(testValue, "speed", { 低: 1, 中: 2, 高: 3 }).name("速度");
+        // 布尔类型
+        folder.add(testValue, "isVisible").name("是否显示").onChange((value) => {
+            // 可以获取修改后的值进行其他操作
+            console.log(value);
+        })
+        
+        folder.open();
+    </script>
+</body>
+
+</html>
