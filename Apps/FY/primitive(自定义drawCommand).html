@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>primitive(自定义drawCommand)</title>
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <canvas id="outputCanvas"></canvas>
+
+    <!-- base -->
+    <script src="https://cdn.jsdelivr.net/npm/spectorjs@0.9.30/dist/spector.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
+    <link rel="stylesheet" href="./common/base.css">
+    <script src="../../Build/CesiumUnminified/Cesium.js"></script>
+    <script src="common/methods.js"></script>
+    <!-- base end -->
+
+    <script>
+        const viewer = new Cesium.Viewer("cesiumContainer");
+        viewer.scene.globe.depthTestAgainstTerrain = true;
+        var origin = Cesium.Cartesian3.fromDegrees(106, 26, 1000);
+        var modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(106, 26, 2800),
+            orientation: {
+                heading: 0.0,
+                pitch: -Cesium.Math.PI_OVER_TWO,
+                roll: 0.0
+            }
+        })
+
+        class MyPrimitive {
+            constructor(modelMatrix) {
+                this.modelMatrix = modelMatrix || Cesium.Matrix4.IDENTITY;
+                this.drawCommand = null
+            }
+
+            isDestroyed() { }
+
+            createCommand(context) {
+                const box = new Cesium.BoxGeometry({
+                    vertexFormat: Cesium.VertexFormat.POSITION_ONLY,
+                    maximum: new Cesium.Cartesian3(2500.0, 2500.0, 2500.0),
+                    minimum: new Cesium.Cartesian3(-2500.0, -2500.0, -2500.0)
+                });
+                const geometry = Cesium.BoxGeometry.createGeometry(box);
+
+                // 创建顶点属性索引，key为属性名称，value为顶点属性缓冲区在同一个着色器程序中的索引。
+                // 相当于将js中的顶点数组，传递到shader中的attribute变量
+                const attributeLocations = Cesium.GeometryPipeline.createAttributeLocations(geometry);
+
+                var vs = `
+                    in vec3 position;
+                    void main(){
+                        gl_Position = czm_projection * czm_modelView * vec4(position, 1.0);
+                    }
+                `;
+                var fs = `
+                    uniform vec3 color;
+                    void main(){
+                        out_FragColor=vec4(color, 1. );
+                    }
+                `;
+
+                this.drawCommand = new Cesium.DrawCommand({
+                    modelMatrix: this.modelMatrix,
+                    vertexArray: Cesium.VertexArray.fromGeometry({
+                        context,
+                        geometry,
+                        attributeLocations
+                    }),
+                    shaderProgram: Cesium.ShaderProgram.fromCache({
+                        context,
+                        vertexShaderSource: vs,
+                        fragmentShaderSource: fs,
+                        attributeLocations
+                    }),
+                    uniformMap: {
+                        color: () => Cesium.Color.GREEN
+                    },
+                    renderState: Cesium.RenderState.fromCache({
+                        cull: {
+                            enabled: true,
+                            face: Cesium.CullFace.BACK
+                        },
+                        depthTest: {
+                            enabled: true
+                        }
+                    }),
+                    pass: Cesium.Pass.OPAQUE // 表示这个命令在不透明的渲染通道中执行
+                })
+            }
+
+            update(frameState) {
+                if (!this.drawCommand) {
+                    this.createCommand(frameState.context);
+                }
+                frameState.commandList.push(this.drawCommand);
+            }
+        }
+
+        var primitive = new MyPrimitive(modelMatrix);
+        viewer.scene.primitives.add(primitive);
+    </script>
+</body>
+
+</html>
