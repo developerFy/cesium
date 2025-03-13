@@ -28,44 +28,12 @@
 
     // 创建FBO
     const fbo = createFrameBuffer(viewer.scene.context);
-    const renderTilesetPassState = new Cesium.Cesium3DTilePassState({
-      pass: Cesium.Cesium3DTilePass.RENDER
-    });
 
     // 每帧执行离屏渲染并输出到辅助Canvas
     viewer.scene.preRender.addEventListener((scene, time) => {
       renderToFbo(fbo, viewer.scene);
-      saveFBOToCanvas(fbo, document.getElementById("outputCanvas"));
+      renderFBOToCanvas(viewer, fbo);
     })
-
-    // 将FBO渲染的场景保存到Canvas中
-    const saveFBOToCanvas = (fbo, canvas) => {
-      const ctx = canvas.getContext("2d");
-
-      const { drawingBufferWidth, drawingBufferHeight } = viewer.scene.context;
-      const pixels = viewer.scene.context.readPixels({
-        x: 0,
-        y: 0,
-        width: drawingBufferWidth,
-        height: drawingBufferHeight,
-        framebuffer: fbo,
-      });
-      canvas.width = drawingBufferWidth;
-      canvas.height = drawingBufferHeight;
-
-      const imgData = new ImageData(
-        new Uint8ClampedArray(pixels),
-        drawingBufferWidth,
-        drawingBufferHeight
-      );
-      ctx.putImageData(imgData, 0, 0, 0, 0, drawingBufferWidth, drawingBufferHeight);
-      ctx.translate(0, drawingBufferHeight);
-      ctx.scale(1, -1);
-      ctx.drawImage(canvas, 0, 0);
-      canvas.style.height = (drawingBufferHeight * 0.3) + "px";
-      canvas.style.width = (drawingBufferWidth * 0.3) + "px";
-    }
-
 
     // 与scene的render方法完全类似，只是将场景渲染到FBO中， 注释内容为离屏渲染可以不需要的内容
     const renderToFbo = (fbo, scene) => {
@@ -79,7 +47,9 @@
       scene.updateFrameState();
       frameState.passes.render = true;
       frameState.passes.postProcess = scene.postProcessStages.hasSelected;
-      frameState.tilesetPassState = renderTilesetPassState;
+      frameState.tilesetPassState = new Cesium.Cesium3DTilePassState({
+        pass: Cesium.Cesium3DTilePass.RENDER
+      });
 
       let backgroundColor = Cesium.defaultValue(scene.backgroundColor, Cesium.Color.BLACK);
       // if (scene._hdr) {

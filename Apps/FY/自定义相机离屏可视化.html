@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Use correct character set. -->
+  <meta charset="utf-8" />
+  <!-- Tell IE to use the latest, best version. -->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no" />
+  <title>Hello World!</title>
+</head>
+
+<body>
+<div id="cesiumContainer"></div>
+<canvas id="outputCanvas"></canvas>
+
+<!-- base -->
+<script src="https://cdn.jsdelivr.net/npm/spectorjs@0.9.30/dist/spector.bundle.min.js"></script>
+<link rel="stylesheet" href="./common/base.css">
+<script src="../../Build/CesiumUnminified/Cesium.js"></script>
+<script src="common/methods.js"></script>
+<!-- base end -->
+
+<script>
+  const viewer = new Cesium.Viewer("cesiumContainer");
+  viewer.scene.globe.depthTestAgainstTerrain = true;
+
+  // 创建FBO
+  const fbo = createFrameBuffer(viewer.scene.context);
+
+  const createOffscreenCamera = (position) => {
+    const offscreenCamera = new Cesium.Camera(viewer.scene)
+    // 设置位置及朝向
+    offscreenCamera.setView({
+      destination: position,
+      orientation: new Cesium.HeadingPitchRoll(0, -Cesium.Math.PI_OVER_TWO, 0)
+    });
+    // 设置视锥体
+    offscreenCamera.frustum = new Cesium.OrthographicFrustum({
+      width: 1500,
+      aspectRatio: 1,
+      near: 0.1,
+      far: 1500 * 2.0
+    });
+
+    //可视化相机
+    viewer.scene.primitives.add(new Cesium.DebugCameraPrimitive({
+      camera: offscreenCamera,
+      updateOnChange: false,//不更新
+      show: true,
+    }));
+
+    return offscreenCamera;
+  }
+  // 创建自定义相机
+  const position = Cesium.Cartesian3.fromDegrees(116.3880, 39.9075, 1500)
+  const offscreenCamera = createOffscreenCamera(position)
+  viewer.scene.camera.flyTo({
+    destination: position,
+    duration: 2
+  })
+
+
+  let isRenderToBuffer = false
+  viewer.scene.postRender.addEventListener(scene => {
+    if (isRenderToBuffer && offscreenCamera) {
+      const frameState = scene._frameState;
+      const context = scene.context;
+
+      const view = scene._defaultView;
+      scene._view = view;
+      const passState = view.passState;
+
+      const mainFramebuffer = passState.framebuffer;
+      // 自定义fbo
+      passState.framebuffer = fbo;
+      scene._clearColorCommand.execute(context, passState)
+      scene._depthClearCommand.execute(context, passState)
+
+      // 自定义相机
+      context.uniformState.updateCamera(offscreenCamera)
+      const cullingVolume = offscreenCamera.frustum.computeCullingVolume(
+        offscreenCamera.positionWC,
+        offscreenCamera.directionWC,
+        offscreenCamera.upWC
+      );
+
+      const frustumCommandsList = view.frustumCommandsList;
+      const numFrustums = frustumCommandsList.length;
+
+      function performPass(frustumCommands, passId) {
+        context.uniformState.updatePass(passId);
+        const commands = frustumCommands.commands[passId];
+        const commandCount = frustumCommands.indices[passId];
+        for (let j = 0; j < commandCount; ++j) {
+          if (cullingVolume.computeVisibility(commands[j].boundingVolume) !== Cesium.Intersect.OUTSIDE) {
+            commands[j].execute(context, passState)
+          }
+        }
+        return commandCount;
+      }
+
+      // Execute commands in each frustum in back to front order
+      for (let i = 0; i < numFrustums; ++i) {
+        const index = numFrustums - i - 1;
+        const frustumCommands = frustumCommandsList[index];
+
+        performPass(frustumCommands, Cesium.Pass.GLOBE);
+        performPass(frustumCommands, Cesium.Pass.CESIUM_3D_TILE);
+      }
+
+      // reset && release
+      passState.framebuffer = mainFramebuffer;
+
+      // 可视化
+      renderFBOToCanvas(viewer, fbo)
+    }
+  })
+
+</script>
+</body>
+
+</html>
