@@ -89,7 +89,7 @@
                 return `
                     vec4 getPositionWCByDepth(sampler2D depthTexture, vec2 texCoord) {
                         vec4 positionEC = czm_windowToEyeCoordinates(
-                            gl_FragCoord.xy, 
+                            gl_FragCoord.xy,
                             czm_unpackDepth(texture(depthTexture, texCoord))
                         );
                         positionEC = positionEC / positionEC.w;
@@ -98,6 +98,27 @@
                         return positionWC;
                     }
                 `
+            }
+
+            const readRangeTexture_GLSL = (rangePositionsLength) => {
+                return `
+                     const int rangeLength = ${rangePositionsLength};
+                     vec3 _rangePositions[rangeLength];
+
+                     vec3[rangeLength] readRangeTexture(sampler2D _rangeTexture,  vec3[rangeLength] _rangePositions) {
+                        for (int i = 0; i < rangeLength; i++) {
+                            float xOffset = float(i) + 0.5;
+                            float perVal = 1.0 / float(rangeLength);
+
+                            _rangePositions[i] = texture(
+                                _rangeTexture,
+                                vec2(perVal * xOffset, 0.5)
+                            ).xyz;
+                        }
+                        return _rangePositions;
+                    }
+
+              `
             }
 
             const rangePositionECTexture = getRangeTexture(rangePositions);
@@ -113,46 +134,37 @@
                         uniform sampler2D depthTexture;
                         in vec2 v_textureCoordinates;
 
-                        
+
                         uniform sampler2D u_rangeTexture; // 范围纹理
                         uniform mat4 u_inverseENU;  // ENU坐标系的逆矩阵
 
                         ${getPositionWCByDepth_GLSL()}
+                        ${readRangeTexture_GLSL(rangePositions.length)}
 
                         void main() {
                             vec4 originalColor = texture(colorTexture, v_textureCoordinates);
                             vec4 positionWC = getPositionWCByDepth(depthTexture, v_textureCoordinates);
-                            
-                            const int rangeLength = ${rangePositions.length};
-                            vec3 rangePositions[rangeLength];
-                            // 读取纹理中的数据
-                            for (int i = 0; i < rangeLength; i++) {
-                                float xOffset = float(i) + 0.5;
-                                float perVal = 1.0 / float(rangeLength);
 
-                                rangePositions[i] = texture(
-                                    u_rangeTexture, 
-                                    vec2(perVal * xOffset, 0.5)
-                                ).xyz;
-                            }
-                        
+                            // 读取纹理数据
+                            vec3[] rangePositions = readRangeTexture(u_rangeTexture, _rangePositions);
+
                             // 测试数据读取与原始数据是否一致
                             if (
-                                rangePositions[0].x == -2712542.2347164466 && 
-                                rangePositions[0].x == -2712542.2347164466 && 
-                                rangePositions[0].y == 4291905.330727653 && 
-                                rangePositions[0].z == 3847403.3661934948 && 
+                                rangePositions[0].x == -2712542.2347164466 &&
+                                rangePositions[0].x == -2712542.2347164466 &&
+                                rangePositions[0].y == 4291905.330727653 &&
+                                rangePositions[0].z == 3847403.3661934948 &&
 
-                                rangePositions[1].x == -2727357.3523860485 && 
-                                rangePositions[1].y == 4281552.533897097 && 
-                                rangePositions[1].z == 3848462.905365525 && 
+                                rangePositions[1].x == -2727357.3523860485 &&
+                                rangePositions[1].y == 4281552.533897097 &&
+                                rangePositions[1].z == 3848462.905365525 &&
 
-                                rangePositions[2].x == -2732460.8527903804 && 
-                                rangePositions[2].y == 4288118.765704473 && 
+                                rangePositions[2].x == -2732460.8527903804 &&
+                                rangePositions[2].y == 4288118.765704473 &&
                                 rangePositions[2].z == 3837584.939264291 &&
 
                                 rangePositions[3].x == -2716256.053677195 &&
-                                rangePositions[3].y == 4298864.491220042 && 
+                                rangePositions[3].y == 4298864.491220042 &&
                                 rangePositions[3].z == 3837072.97189279
                             ) {
                                 out_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
@@ -169,7 +181,7 @@
             )
 
         }
-        
+
         // 拾取
         // const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
         // handler.setInputAction(function (click) {
