@@ -13,7 +13,7 @@ const createFrameBuffer = (context) => {
       width: width,
       height: height,
       pixelFormat: PixelFormat.RGBA,
-      pixelDatatype: PixelDatatype.UNSIGNED_BYTE
+      pixelDatatype: PixelDatatype.UNSIGNED_BYTE // 0-255，GPU传递过程中存在归一化
     })],
     depthTexture: new Texture({
       context: context,

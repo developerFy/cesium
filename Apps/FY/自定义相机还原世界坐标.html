@@ -15,6 +15,11 @@
 <body>
 <div id="cesiumContainer"></div>
 <canvas id="outputCanvas"></canvas>
+<div id="button-container">
+  <button onclick='isRenderToBuffer = true'>开始</button>
+  <button onclick="isRenderToBuffer = false">终止</button>
+  <button onclick="handleRestoreWorldData()">世界坐标还原读取</button>
+</div>
 
 <!-- base -->
 <script src="https://cdn.jsdelivr.net/npm/spectorjs@0.9.30/dist/spector.bundle.min.js"></script>
@@ -24,11 +29,16 @@
 <!-- base end -->
 
 <script>
-  const viewer = new Cesium.Viewer("cesiumContainer");
+  const {Cartesian3, Cartesian4} = Cesium
+
+  const viewer = new Cesium.Viewer("cesiumContainer", {
+    terrain: Cesium.Terrain.fromWorldTerrain(),
+  });
   viewer.scene.globe.depthTestAgainstTerrain = true;
 
   // 创建FBO
   const fbo = createFrameBuffer(viewer.scene.context);
+  const renderDepthFbo = createFrameBuffer(viewer.scene.context)
 
   const createOffscreenCamera = (position) => {
     const offscreenCamera = new Cesium.Camera(viewer.scene)
@@ -39,10 +49,10 @@
     });
     // 设置视锥体
     offscreenCamera.frustum = new Cesium.OrthographicFrustum({
-      width: 1500,
+      width: 1000,
       aspectRatio: 1,
-      near: 0.1,
-      far: 1500 * 2.0
+      near: 0.01,
+      far: 300 * 2.0
     });
 
     //可视化相机
@@ -55,7 +65,7 @@
     return offscreenCamera;
   }
   // 创建自定义相机
-  const position = Cesium.Cartesian3.fromDegrees(116.3880, 39.9075, 1500)
+  const position = Cartesian3.fromDegrees(116.3880, 39.9075, 300)
   const offscreenCamera = createOffscreenCamera(position)
   viewer.scene.camera.flyTo({
     destination: position,
@@ -63,7 +73,7 @@
   })
 
 
-  let isRenderToBuffer = true
+  let isRenderToBuffer = false
   viewer.scene.postRender.addEventListener(scene => {
     if (isRenderToBuffer && offscreenCamera) {
       const frameState = scene._frameState;
@@ -116,8 +126,83 @@
 
       // 可视化
       renderFBOToCanvas(viewer, fbo)
+      // 深度读取
+      const renderDepthCommand = context.createViewportQuadCommand(
+        `
+           in vec2 v_textureCoordinates;
+           uniform sampler2D u_depthTexture;
+
+           void main() {
+             float depth = czm_unpackDepth(texture(u_depthTexture, v_textureCoordinates));
+             out_FragColor = vec4(gl_FragCoord.xy / czm_viewport.zw, depth, 1.0);
+           }
+        `,
+        {
+          framebuffer: renderDepthFbo,
+          uniformMap: {
+            u_depthTexture: () => fbo.depthTexture,
+          },
+        },
+      );
+      renderDepthCommand.execute(context, passState);
     }
   })
+
+  const handleRestoreWorldData = () => {
+    isRenderToBuffer = false
+
+    const context = viewer.scene.context
+    const width = context.canvas.clientWidth;
+    const height = context.canvas.clientHeight;
+    const pixelsData = context.readPixels({
+      x: 0,
+      y: 0,
+      width,
+      height,
+      framebuffer: renderDepthFbo,
+    });
+    const vec4PixelData = Cartesian4.unpackArray(pixelsData).map((pixel) => {
+      return Cartesian4.divideByScalar(pixel, 255.0, pixel)
+    })
+    console.log(vec4PixelData)
+
+
+    const ray = new Cesium.Ray(offscreenCamera.position, offscreenCamera.direction)
+    const samplerSize = 2
+    const worldPositions = []
+    for (let i = 0; i < height; i+=samplerSize) {
+      for (let j = 0; j < width; j+=samplerSize) {
+        const {x,y,z} = vec4PixelData[i * width + j]
+        const {left, right, top, bottom, near, far} = offscreenCamera.frustum.offCenterFrustum
+
+        const xLocal = Number(left) + x * (right - left)
+        const yLocal = Number(bottom) + y * (top - bottom)
+
+        const offset = new Cartesian3()
+        Cartesian3.multiplyByScalar(offscreenCamera.right,  xLocal, offset)
+        Cartesian3.add(offset, Cartesian3.multiplyByScalar(offscreenCamera.up,  yLocal, new Cartesian3()), offset)
+        Cartesian3.add(offscreenCamera.position, offset, offset)
+
+        const distance = near + z * (far - near)
+        const cloneRay = Cesium.Ray.clone(ray)
+        cloneRay.origin = offset
+        worldPositions.push(Cesium.Ray.getPoint(cloneRay, distance))
+      }
+    }
+
+    // 世界坐标还原可视化
+    const pointCollection = new Cesium.PointPrimitiveCollection();
+    viewer.scene.primitives.add(pointCollection);
+    worldPositions.forEach((position) => {
+      pointCollection.add({
+        position,
+        color: Cesium.Color.GREEN, // 点颜色
+        pixelSize: 5, // 像素大小
+        outlineColor: Cesium.Color.YELLOW, // 边框颜色
+        outlineWidth: 1 // 边框宽度
+      });
+    })
+  }
 
 </script>
 </body>
