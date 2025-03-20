@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <!-- Use correct character set. -->
+        <meta charset="utf-8" />
+        <!-- Tell IE to use the latest, best version. -->
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no"
+        />
+        <title>自定义相机额外渲染</title>
+    </head>
+
+    <body>
+        <div id="cesiumContainer"></div>
+        <canvas id="outputCanvas"></canvas>
+
+        <!-- base -->
+        <script src="https://cdn.jsdelivr.net/npm/spectorjs@0.9.30/dist/spector.bundle.min.js"></script>
+        <link rel="stylesheet" href="./common/base.css" />
+        <script src="../../Build/CesiumUnminified/Cesium.js"></script>
+        <script src="common/methods.js"></script>
+        <!-- base end -->
+
+        <script>
+            const {
+                Cartesian3,
+                Cesium3DTileset,
+                Cesium3DTilePassState,
+                Cesium3DTilePass,
+            } = Cesium;
+
+            const viewer = new Cesium.Viewer("cesiumContainer");
+            viewer.scene.globe.depthTestAgainstTerrain = true;
+
+            let tileset;
+            const addTileset = async (url, options = {}) => {
+                const _tilesetPromise = await Cesium3DTileset.fromUrl(
+                    url,
+                    options,
+                );
+                tileset = viewer.scene.primitives.add(_tilesetPromise);
+                viewer.zoomTo(tileset);
+            };
+            addTileset(
+                "http://114.242.26.126:7000/examples/examples/1.%20%E6%95%99%E7%A8%8B%E7%A4%BA%E4%BE%8B/1.%20%E5%9F%BA%E7%A1%80%E5%9C%BA%E6%99%AF%E5%AF%B9%E8%B1%A1%E7%A4%BA%E4%BE%8B/1.%203dtiles%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E7%A4%BA%E4%BE%8B20241118//revit_school_3dtiles1.1/tileset.json",
+            );
+
+            // 创建FBO
+            const fbo = createFrameBuffer(viewer.scene.context);
+            // 创建自定义相机
+            const createOffscreenCamera = (position) => {
+                const offscreenCamera = new Cesium.Camera(viewer.scene);
+                // 设置位置及朝向
+                offscreenCamera.setView({
+                    destination: position,
+                    orientation: new Cesium.HeadingPitchRoll(
+                        0,
+                        -Cesium.Math.PI_OVER_TWO,
+                        0,
+                    ),
+                });
+                // 设置视锥体
+                offscreenCamera.frustum = new Cesium.OrthographicFrustum({
+                    width: 150,
+                    aspectRatio: 1,
+                    near: 0.1,
+                    far: 200 * 2.0,
+                });
+
+                //可视化相机
+                viewer.scene.primitives.add(
+                    new Cesium.DebugCameraPrimitive({
+                        camera: offscreenCamera,
+                        updateOnChange: false, //不更新
+                        show: true,
+                    }),
+                );
+
+                return offscreenCamera;
+            };
+            const position = Cartesian3.fromDegrees(116.3915, 39.907, 200);
+            const offscreenCamera = createOffscreenCamera(position);
+
+            // 在场景渲染前
+            viewer.scene.preRender.addEventListener((scene) => {
+                const frameState = scene._frameState;
+                const context = scene.context;
+                const passState = scene._defaultView.passState;
+
+                frameState.commandList = []; // 🆑：清除的目的在于防止其他的内容影响到单独对3dTiles的持久化显示
+                context.uniformState._ellipsoid =
+                    context.uniformState.ellipsoid;
+                context.uniformState.updateCamera(offscreenCamera);
+                if (tileset) {
+                    // ‼️ 重点
+                    frameState.tilesetPassState = new Cesium3DTilePassState({
+                        pass: Cesium3DTilePass.RENDER,
+                        camera: offscreenCamera,
+                        cullingVolume:
+                            offscreenCamera.frustum.computeCullingVolume(
+                                offscreenCamera.positionWC,
+                                offscreenCamera.directionWC,
+                                offscreenCamera.upWC,
+                            ),
+                        commandList: frameState.commandList,
+                    });
+                    // 更新收集commands （全量更新，如果只需要某个部件，则把其他部件show设置，本质是筛选需要被渲染的drawCommand）
+                    tileset && tileset.update(frameState);
+                    // 执行
+                    frameState.commandList.forEach((command) => {
+                        if (command instanceof Cesium.DrawCommand) {
+                            command.execute(context, passState);
+                        }
+                    });
+                    // 可视化
+                    renderFBOToCanvas(viewer, passState.framebuffer);
+                }
+            });
+        </script>
+    </body>
+</html>

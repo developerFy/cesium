@@ -28,7 +28,8 @@
 
         // 添加Cesium 3D Tiles Inspector
         viewer.extend(Cesium.viewerCesium3DTilesInspectorMixin);
-
+        // 添加Cesium Inspector
+        viewer.extend(Cesium.viewerCesiumInspectorMixin);
         // 显示帧率
         viewer.scene.debugShowFramesPerSecond = true;
 
