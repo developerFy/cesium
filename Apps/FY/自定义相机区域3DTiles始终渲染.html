@@ -35,18 +35,8 @@
             const viewer = new Cesium.Viewer("cesiumContainer");
             viewer.scene.globe.depthTestAgainstTerrain = true;
 
-            let tileset;
-            const addTileset = async (url, options = {}) => {
-                const _tilesetPromise = await Cesium3DTileset.fromUrl(
-                    url,
-                    options,
-                );
-                tileset = viewer.scene.primitives.add(_tilesetPromise);
-                viewer.zoomTo(tileset);
-            };
-            addTileset(
-                "http://114.242.26.126:7000/examples/examples/1.%20%E6%95%99%E7%A8%8B%E7%A4%BA%E4%BE%8B/1.%20%E5%9F%BA%E7%A1%80%E5%9C%BA%E6%99%AF%E5%AF%B9%E8%B1%A1%E7%A4%BA%E4%BE%8B/1.%203dtiles%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E7%A4%BA%E4%BE%8B20241118//revit_school_3dtiles1.1/tileset.json",
-            );
+            let tileset
+            addTileset().then(res => tileset = res)
 
             // 创建FBO
             const fbo = createFrameBuffer(viewer.scene.context);
@@ -89,10 +79,9 @@
                 const frameState = scene._frameState;
                 const context = scene.context;
                 const passState = scene._defaultView.passState;
-
-                frameState.commandList = []; // 🆑：清除的目的在于防止其他的内容影响到单独对3dTiles的持久化显示
-                context.uniformState._ellipsoid =
-                    context.uniformState.ellipsoid;
+                // 🆑：清除的目的在于防止其他的内容影响到单独对3dTiles的持久化显示
+                frameState.commandList = [];
+                context.uniformState._ellipsoid = frameState.mapProjection.ellipsoid;
                 context.uniformState.updateCamera(offscreenCamera);
                 if (tileset) {
                     // ‼️ 重点

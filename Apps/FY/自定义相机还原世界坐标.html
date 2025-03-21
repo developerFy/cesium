@@ -32,9 +32,11 @@
   const {Cartesian3, Cartesian4} = Cesium
 
   const viewer = new Cesium.Viewer("cesiumContainer", {
-    terrain: Cesium.Terrain.fromWorldTerrain(),
+    // terrain: Cesium.Terrain.fromWorldTerrain(),
   });
   viewer.scene.globe.depthTestAgainstTerrain = true;
+
+  addTileset();
 
   // 创建FBO
   const fbo = createFrameBuffer(viewer.scene.context);
@@ -49,7 +51,7 @@
     });
     // 设置视锥体
     offscreenCamera.frustum = new Cesium.OrthographicFrustum({
-      width: 1000,
+      width: 300,
       aspectRatio: 1,
       near: 0.01,
       far: 300 * 2.0
@@ -65,7 +67,7 @@
     return offscreenCamera;
   }
   // 创建自定义相机
-  const position = Cartesian3.fromDegrees(116.3880, 39.9075, 300)
+  const position = Cartesian3.fromDegrees(116.3915, 39.907, 200);
   const offscreenCamera = createOffscreenCamera(position)
   viewer.scene.camera.flyTo({
     destination: position,
@@ -148,6 +150,10 @@
     }
   })
 
+
+  // 世界坐标还原可视化
+  const pointCollection = new Cesium.PointPrimitiveCollection();
+  viewer.scene.primitives.add(pointCollection);
   const handleRestoreWorldData = () => {
     isRenderToBuffer = false
 
@@ -162,16 +168,18 @@
       framebuffer: renderDepthFbo,
     });
     const vec4PixelData = Cartesian4.unpackArray(pixelsData).map((pixel) => {
+      // PixelDatatype.UNSIGNED_BYTE归一化的影响
       return Cartesian4.divideByScalar(pixel, 255.0, pixel)
     })
     console.log(vec4PixelData)
 
 
     const ray = new Cesium.Ray(offscreenCamera.position, offscreenCamera.direction)
-    const samplerSize = 2
+    const samplerSize = 10
     const worldPositions = []
     for (let i = 0; i < height; i+=samplerSize) {
       for (let j = 0; j < width; j+=samplerSize) {
+        // xyz为遵循frustum下的线性值，范围 0-1
         const {x,y,z} = vec4PixelData[i * width + j]
         const {left, right, top, bottom, near, far} = offscreenCamera.frustum.offCenterFrustum
 
@@ -185,25 +193,24 @@
 
         const distance = near + z * (far - near)
         const cloneRay = Cesium.Ray.clone(ray)
+
+        // 相机偏移后进行世界坐标点的获取
         cloneRay.origin = offset
         worldPositions.push(Cesium.Ray.getPoint(cloneRay, distance))
       }
     }
 
-    // 世界坐标还原可视化
-    const pointCollection = new Cesium.PointPrimitiveCollection();
-    viewer.scene.primitives.add(pointCollection);
+    pointCollection.removeAll()
     worldPositions.forEach((position) => {
       pointCollection.add({
         position,
-        color: Cesium.Color.GREEN, // 点颜色
+        color: Cesium.Color.YELLOW, // 点颜色
         pixelSize: 5, // 像素大小
-        outlineColor: Cesium.Color.YELLOW, // 边框颜色
-        outlineWidth: 1 // 边框宽度
+        outlineColor: Cesium.Color.RED, // 边框颜色
+        outlineWidth: 2 // 边框宽度
       });
     })
   }
-
 </script>
 </body>
 
