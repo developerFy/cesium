@@ -1,199 +1,209 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>primitive(动态绘制)</title>
-    </head>
 
-    <body>
-        <div id="cesiumContainer"></div>
-        <canvas id="outputCanvas"></canvas>
-        <div id="button-container">
-            <button onclick="clearResult()">清除</button>
-            <button onclick="registerHandlerEvents()">开始绘制</button>
-        </div>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>primitive(动态绘制)</title>
+</head>
 
-        <!-- base -->
-        <script src="https://cdn.jsdelivr.net/npm/spectorjs@0.9.30/dist/spector.bundle.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
-        <link rel="stylesheet" href="./common/base.css" />
-        <script src="../../Build/CesiumUnminified/Cesium.js"></script>
-        <script src="common/methods.js"></script>
-        <!-- base end -->
+<body>
+    <div id="cesiumContainer"></div>
+    <canvas id="outputCanvas"></canvas>
+    <div id="button-container">
+        <button onclick="clearResult()">清除</button>
+        <button onclick="registerHandlerEvents()">开始绘制</button>
+    </div>
 
-        <script>
-            const {Cartesian3} = Cesium
+    <!-- base -->
+    <script src="https://cdn.jsdelivr.net/npm/spectorjs@0.9.30/dist/spector.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
+    <link rel="stylesheet" href="./common/base.css" />
+    <script src="../../Build/CesiumUnminified/Cesium.js"></script>
+    <script src="common/methods.js"></script>
+    <!-- base end -->
 
-            const viewer = new Cesium.Viewer("cesiumContainer");
-            viewer.scene.globe.depthTestAgainstTerrain = true;
-            // 移除默认的点击事件
-            viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK)
+    <script>
+        const { Cartesian3 } = Cesium
 
+        const viewer = new Cesium.Viewer("cesiumContainer");
+        // 移除默认的点击事件
+        viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK)
+        addTileset()
 
-            addTileset()
+        // 动态绘制的坐标集合
+        let activePositionArr = [];
+        // 容器
+        const primitiveCollection = new Cesium.PrimitiveCollection();
+        const pointPrimitiveCollection = new Cesium.PointPrimitiveCollection();
+        const labelPrimitiveCollection = new Cesium.LabelCollection();
 
-            let activePositionArr = [];
+        viewer.scene.primitives.add(primitiveCollection);
+        viewer.scene.primitives.add(pointPrimitiveCollection);
+        viewer.scene.primitives.add(labelPrimitiveCollection);
 
-
-            // 容器
-            const primitiveCollection = new Cesium.PrimitiveCollection();
-            const pointPrimitiveCollection = new Cesium.PointPrimitiveCollection();
-            const labelPrimitiveCollection = new Cesium.LabelCollection();
-
-            viewer.scene.primitives.add(primitiveCollection);
-            viewer.scene.primitives.add(pointPrimitiveCollection);
-            viewer.scene.primitives.add(labelPrimitiveCollection);
-
-            const addPoint = () => {
-                activePositionArr.forEach((position) => {
-                    pointPrimitiveCollection.add({
-                        position: position,
-                        color: Cesium.Color.GREEN,
-                        pixelSize: 8,
-                        disableDepthTestDistance: Infinity
-                    });
+        const addPoint = () => {
+            activePositionArr.forEach((position) => {
+                pointPrimitiveCollection.add({
+                    position: position,
+                    color: Cesium.Color.GREEN,
+                    pixelSize: 8,
+                    disableDepthTestDistance: Infinity
                 });
-            };
-            const addPolyline = () => {
-                if (activePositionArr.length < 2) return
-                const polylinePrimitive = new Cesium.Primitive({
-                    geometryInstances: new Cesium.GeometryInstance({
-                        geometry: new Cesium.PolylineGeometry({
-                            positions: activePositionArr,
-                            width: 10.0,
-                        }),
+            });
+        };
+        const addPolyline = () => {
+            if (activePositionArr.length < 2) return
+            const polylinePrimitive = new Cesium.Primitive({
+                geometryInstances: new Cesium.GeometryInstance({
+                    geometry: new Cesium.PolylineGeometry({
+                        positions: activePositionArr,
+                        width: 10.0,
                     }),
-                    appearance: new Cesium.PolylineMaterialAppearance({
-                        material: Cesium.Material.fromType("Color", {
-                            color: Cesium.Color.DEEPPINK,
-                        }),
-                        renderState: {
-                            depthTest: {
-                                enabled: false,
-                            },
+                }),
+                appearance: new Cesium.PolylineMaterialAppearance({
+                    material: Cesium.Material.fromType("Color", {
+                        color: Cesium.Color.DEEPPINK,
+                    }),
+                    renderState: {
+                        depthTest: {
+                            enabled: false,
                         },
+                    },
+                }),
+                asynchronous: false,
+            });
+            primitiveCollection.add(polylinePrimitive);
+        };
+        const addPolygon = () => {
+            if (activePositionArr.length < 3) return
+            const polygonPrimitive = new Cesium.Primitive({
+                geometryInstances: new Cesium.GeometryInstance({
+                    geometry: new Cesium.PolygonGeometry({
+                        polygonHierarchy: new Cesium.PolygonHierarchy(activePositionArr),
+                        perPositionHeight: true
                     }),
-                    asynchronous: false,
-                });
-                primitiveCollection.add(polylinePrimitive);
-            };
-            const addPolygon = () => {
-                if (activePositionArr.length < 3) return
-                const polygonPrimitive = new Cesium.Primitive({
-                    geometryInstances: new Cesium.GeometryInstance({
-                        geometry: new Cesium.PolygonGeometry({
-                            polygonHierarchy: new Cesium.PolygonHierarchy(activePositionArr),
-                            perPositionHeight: true
-                        }),
+                }),
+                appearance: new Cesium.MaterialAppearance({
+                    material: Cesium.Material.fromType("Color", {
+                        color: Cesium.Color.YELLOW,
                     }),
-                    appearance: new Cesium.MaterialAppearance({
-                        material: Cesium.Material.fromType("Color", {
-                            color: Cesium.Color.YELLOW,
-                        }),
-                        renderState: {
-                            depthTest: {
-                                enabled: false,
-                            },
+                    renderState: {
+                        depthTest: {
+                            enabled: false,
                         },
-                    }),
-                    asynchronous: false,
+                    },
+                }),
+                asynchronous: false,
+            });
+            primitiveCollection.add(polygonPrimitive);
+        }
+        const addLabel = () => {
+            const labelPosition = _calcCenter()
+            if (labelPosition) {
+                labelPrimitiveCollection.add({
+                    position: labelPosition,
+                    font: '18px',
+                    text: '中心点',
+                    showBackground: true,
+                    disableDepthTestDistance: Infinity
                 });
-                primitiveCollection.add(polygonPrimitive);
             }
-            const addLabel = () => {
-                const labelPosition = _calcCenter()
-                if (labelPosition) {
-                    labelPrimitiveCollection.add({
-                        position: labelPosition,
-                        font: '18px',
-                        text: '中心点',
-                        showBackground: true,
-                        disableDepthTestDistance: Infinity
-                    });
-                }
+        }
+
+        const _calcCenter = () => {
+            if (activePositionArr.length < 2) return
+            // 计算中点
+            let midpoint = new Cartesian3();
+            for (let i = 0; i < activePositionArr.length; i++) {
+                midpoint = Cartesian3.add(activePositionArr[i], midpoint, new Cartesian3());
             }
+            Cartesian3.divideByScalar(midpoint, activePositionArr.length, midpoint);
+            return midpoint;
+        }
 
-            const _calcCenter = () => {
-                if (activePositionArr.length < 2) return
-                // 计算中点
-                let midpoint = new Cartesian3();
-                for (let i = 0; i < activePositionArr.length; i++) {
-                    midpoint = Cartesian3.add(activePositionArr[i], midpoint, new Cartesian3());
-                }
-                Cartesian3.divideByScalar(midpoint, activePositionArr.length, midpoint);
-                return midpoint;
-            }
+        const updateElements = () => {
+            removeAll();
 
-            const updateElements = () => {
-                removeAll();
+            addLabel();
+            addPoint();
+            addPolyline();
+            addPolygon();
+        };
+        const removeAll = () => {
+            primitiveCollection.removeAll();
+            pointPrimitiveCollection.removeAll();
+            labelPrimitiveCollection.removeAll();
+        };
 
-                addLabel();
+        // 事件相关
+        const handler = new Cesium.ScreenSpaceEventHandler(
+            viewer.scene.canvas,
+        );
+        const registerHandlerEvents = () => {
+            handler.setInputAction((movement) => {
+                const position = viewer.scene.pickPosition(
+                    movement.position,
+                );
+                console.log("单击");
                 addPoint();
-                addPolyline();
-                addPolygon();
-            };
-            const removeAll = () => {
-                primitiveCollection.removeAll();
-                pointPrimitiveCollection.removeAll();
-                labelPrimitiveCollection.removeAll();
-            };
 
-            // 事件相关
-            const handler = new Cesium.ScreenSpaceEventHandler(
-                viewer.scene.canvas,
-            );
-            const registerHandlerEvents = () => {
-                handler.setInputAction((movement) => {
-                    const position = viewer.scene.pickPosition(
-                        movement.position,
-                    );
-                    console.log("单击");
-                    addPoint();
-
-                    if (activePositionArr.length === 0) {
-                        activePositionArr.push(position);
-                    }
+                if (activePositionArr.length === 0) {
                     activePositionArr.push(position);
-                    updateElements();
-                }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-                handler.setInputAction((movement) => {
-                    const position = viewer.scene.pickPosition(
-                        movement.endPosition,
-                    );
-                    if (position && activePositionArr.length > 0) {
-                        activePositionArr.pop();
-                        activePositionArr.push(position);
-                    }
-                    updateElements()
-                }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-                handler.setInputAction((movement) => {
-                    removeHandlerEvents();
-                    console.log("双击");
-                    activePositionArr.pop(); // 处理移动过程中添加的最后一个点
-                    activePositionArr.pop(); // 处理单击的额外触发
-
-                    activePositionArr.push(activePositionArr[0]);
-                    updateElements()
-                }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
-            };
-            const removeHandlerEvents = () => {
-                handler.removeInputAction(
-                    Cesium.ScreenSpaceEventType.LEFT_CLICK,
+                }
+                activePositionArr.push(position);
+                updateElements();
+            }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+            handler.setInputAction((movement) => {
+                const position = viewer.scene.pickPosition(
+                    movement.endPosition,
                 );
-                handler.removeInputAction(
-                    Cesium.ScreenSpaceEventType.MOUSE_MOVE,
-                );
-                handler.removeInputAction(
-                    Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK,
-                );
-            };
-
-            const clearResult = () => {
-                activePositionArr = [];
-                removeAll();
+                if (position && activePositionArr.length > 0) {
+                    activePositionArr.pop();
+                    activePositionArr.push(position);
+                }
+                updateElements()
+            }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+            handler.setInputAction((movement) => {
                 removeHandlerEvents();
-            };
-        </script>
-    </body>
+                console.log("双击");
+                activePositionArr.pop(); // 处理移动过程中添加的最后一个点
+                activePositionArr.pop(); // 处理单击的额外触发
+
+                activePositionArr.push(activePositionArr[0]);
+                updateElements()
+            }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+            handler.setInputAction((movement) => {
+                console.log("右键");
+                const position = viewer.scene.pickPosition(
+                    movement.position,
+                );
+                if (position && activePositionArr.length > 0) {
+                    activePositionArr.pop();
+                    activePositionArr.pop();
+                    activePositionArr.push(position);
+                }
+                updateElements()
+            }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
+        };
+        const removeHandlerEvents = () => {
+            const eventTypes = [
+                Cesium.ScreenSpaceEventType.LEFT_CLICK,
+                Cesium.ScreenSpaceEventType.MOUSE_MOVE,
+                Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK,
+                Cesium.ScreenSpaceEventType.RIGHT_CLICK
+            ];
+            eventTypes.forEach((eventType) => {
+                handler.removeInputAction(eventType);
+            })
+        };
+
+        const clearResult = () => {
+            activePositionArr = [];
+            removeAll();
+            removeHandlerEvents();
+        };
+    </script>
+</body>
+
 </html>

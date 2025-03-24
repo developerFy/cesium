@@ -76,7 +76,13 @@
                         // 使用NEAREST过滤，避免插值
                         minificationFilter: Cesium.TextureMinificationFilter.NEAREST,
                         magnificationFilter: Cesium.TextureMagnificationFilter.NEAREST,
-                        // 存储数据的纹理，通常CLAMP_TO_EDGE而不是REPEAT，避免数据重复存储
+                        // wrapS和wrapT是： 控制纹理在S方向(水平/X方向)【T方向(垂直/Y方向)】的环绕模式
+                        // 即：表示当纹理坐标超出[0,1]范围时，纹理采样器(Sampler)中控制纹理坐标超出[0,1]范围时如何处理的参数
+                        //   REPEAT: 纹理会重复
+                        //   MIRRORED_REPEAT: 纹理会镜像重复
+                        //   CLAMP_TO_EDGE会使用最靠近边缘的纹素(texel)值 【对于数据纹理而非视觉纹理，CLAMP_TO_EDGE很重要】
+                        //       即：尝试访问纹理坐标小于0的位置，将返回纹理第一行/列的值，坐标大于1的位置，将返回纹理最后一行/列的值
+                        //          防止在读取纹理边缘数据时出现意外的采样行为，确保当计算的纹理坐标略微超出边界时仍能获得正确的数据
                         wrapS: Cesium.TextureWrap.CLAMP_TO_EDGE,
                         wrapT: Cesium.TextureWrap.CLAMP_TO_EDGE
                     }
