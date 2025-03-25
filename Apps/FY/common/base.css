@@ -24,6 +24,17 @@ body,
   z-index: 9999;
 }
 
+/* 信息显示 */
+#info-display {
+  position: absolute;
+  top: 50px;
+  right: 5px;
+  font-size: 12px;
+  background: #eee;
+  padding: 10px;
+  border-radius: 5px;
+}
+
 
 /* 3dtiles 检查器 */
 .cesium-viewer-cesium3DTilesInspectorContainer {

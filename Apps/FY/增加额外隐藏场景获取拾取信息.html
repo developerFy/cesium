@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <!-- Use correct character set. -->
+    <meta charset="utf-8" />
+    <!-- Tell IE to use the latest, best version. -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no" />
+    <title>增加额外隐藏场景获取拾取信息</title>
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <div id="button-container">
+        <button onclick="handleExtraViewForPick()">开始</button>
+    </div>
+    <div id="info-display">
+    </div>
+
+
+    <!-- base -->
+    <script src="https://cdn.jsdelivr.net/npm/spectorjs@0.9.30/dist/spector.bundle.min.js"></script>
+    <link rel="stylesheet" href="./common/base.css">
+    <script src="../../Build/CesiumUnminified/Cesium.js"></script>
+    <script src="common/methods.js"></script>
+    <!-- base end -->
+
+    <script>
+        const viewer = new Cesium.Viewer("cesiumContainer");
+        /**
+         * 处理额外视图的拾取功能
+         * 创建一个新的视图窗口并进行射线拾取测试
+         */
+        function handleExtraViewForPick(position = testPoint, callback = showData) {
+            // 创建并设置视图容器div元素
+            const div = document.createElement('div')
+            div.style.position = 'absolute'
+            div.style.top = '0'
+            div.style.width = '50%'
+            div.style.height = '50%'
+            document.body.insertBefore(div, document.body.firstChild)
+
+            let viewer = new Cesium.Viewer(div, {})
+
+            let tilesetOther
+            const cartographicPoint = Cesium.Cartographic.fromCartesian(position)
+            const originPosition = Cesium.Cartesian3.fromRadians(
+                cartographicPoint.longitude,
+                cartographicPoint.latitude,
+                cartographicPoint.height + 100
+            )
+
+            async function addTilesetOther() {
+                tilesetOther = await Cesium.Cesium3DTileset.fromIonAssetId(40866)
+                viewer.scene.primitives.add(tilesetOther);
+                // 定位到position位置
+                viewer.camera.flyTo({
+                    destination: originPosition,
+                    duration: 0,
+                    complete: function() {
+                        console.log('相机已定位到目标位置');
+                    }
+                })
+            }
+
+            addTilesetOther(viewer).then(() => {
+                // 创建射线对象，并设置射线起点和方向
+                const ray = new Cesium.Ray()
+                ray.origin = originPosition
+                ray.direction = Cesium.Cartesian3.normalize(
+                    Cesium.Cartesian3.subtract(position, ray.origin, new Cesium.Cartesian3()),
+                    new Cesium.Cartesian3()
+                )
+
+                tilesetOther.allTilesLoaded.addEventListener(() => {
+                    console.log('所有瓦片加载完成');
+                    
+                    // 使用射线进行拾取测试
+                    const pickedObjects = viewer.scene.drillPickFromRay(ray)
+                    callback && callback(pickedObjects)
+
+                    // 清理资源
+                    viewer = null
+                    document.body.removeChild(div)
+                })
+            })
+        }
+
+
+        // 设置测试点坐标
+        const testPoint = new Cesium.Cartesian3(
+            1216320.2774619323,
+            -4736320.599381732,
+            4081346.2098454894
+        )
+
+        const showData = (data) => {
+            console.log(data, 'data');
+            let dataStr = ''
+            data.filter(el => el.object).forEach((item) => {
+                dataStr += `[x: ${item.position.x}, y: ${item.position.y}, z: ${item.position.z}]
+                `
+            })
+            document.getElementById('info-display').innerText = dataStr
+        }
+
+    </script>
+</body>
+
+</html>
