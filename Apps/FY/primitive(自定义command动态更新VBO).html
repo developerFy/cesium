@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>动态更新VBO示例</title>
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <div id="button-container">
+        <button onclick="primitive.startMoving()">开始运动</button>
+        <button onclick="primitive.stopMoving()">停止运动</button>
+    </div>
+
+    <!-- base -->
+    <script src="https://cdn.jsdelivr.net/npm/spectorjs@0.9.30/dist/spector.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
+    <link rel="stylesheet" href="./common/base.css">
+    <script src="../../Build/CesiumUnminified/Cesium.js"></script>
+    <script src="common/methods.js"></script>
+    <!-- base end -->
+
+    <script>
+        const viewer = new Cesium.Viewer("cesiumContainer");
+        var origin = Cesium.Cartesian3.fromDegrees(106, 26, 1000);
+        var modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(106, 26, 5000),
+            orientation: {
+                pitch: -Cesium.Math.PI_OVER_TWO,
+            }
+        });
+
+        class DynamicPrimitive {
+            constructor(modelMatrix) {
+                this.modelMatrix = modelMatrix || Cesium.Matrix4.IDENTITY;
+                this.drawCommand = null;
+                this.positionBuffer = null;
+                this.vertexArray = null;
+                this.isMoving = false;
+                this.frameCount = 0;
+
+                const originalPositions = [
+                    [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],         // 前
+                    [-1.0, -1.0, -1.0], [-1.0, 1.0, -1.0], [1.0, 1.0, -1.0], [1.0, -1.0, -1.0],     // 后
+                    [-1.0, 1.0, -1.0], [-1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, -1.0],         // 顶
+                    [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, -1.0, 1.0], [-1.0, -1.0, 1.0],     // 底
+                    [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [1.0, 1.0, 1.0], [1.0, -1.0, 1.0],         // 右
+                    [-1.0, -1.0, -1.0], [-1.0, -1.0, 1.0], [-1.0, 1.0, 1.0], [-1.0, 1.0, -1.0]      // 左
+                ]
+
+                this.initialPositions = new Float32Array(originalPositions.flat().map(el => el * 200.0));
+
+                /**
+                 * 构建顶点索引
+                 * 前面的四个顶点排列：       三角形组成方式：
+                    3 -------- 2            3 -------- 2
+                    |          |            |        / |
+                    |          |            |     /    |
+                    |          |            |  /       |
+                    0 -------- 1            0 -------- 1
+                 */
+                const indices = []
+                const perFaceNumber = 4; // 每个面的顶点个数
+                const perPointNumber = 3; // 每个顶点的坐标个数
+                const numFaces = this.initialPositions.length / (perFaceNumber * perPointNumber) // 面的个数
+
+                for (let i = 0; i < numFaces; i++) { // 遍历每个面
+                    const start = perFaceNumber * i
+                    // 绘制面
+                    indices.push(start, start + 1, start + 2)
+                    indices.push(start, start + 2, start + 3)
+                    // 绘制线框
+                    // indices.push(start, start + 1, start + 2, start + 3, start)
+                }
+
+                this.indices = new Uint16Array(indices)
+                this.currentPositions = new Float32Array(this.initialPositions);
+            }
+
+            createCommand(context) {
+                this.positionBuffer = Cesium.Buffer.createVertexBuffer({
+                    context: context,
+                    typedArray: this.currentPositions,
+                    usage: Cesium.BufferUsage.DYNAMIC_DRAW
+                });
+
+                this.vertexArray = new Cesium.VertexArray({
+                    context: context,
+                    attributes: [{
+                        index: 0,
+                        vertexBuffer: this.positionBuffer,
+                        componentsPerAttribute: 3,
+                        componentDatatype: Cesium.ComponentDatatype.FLOAT
+                    }],
+                    indexBuffer: Cesium.Buffer.createIndexBuffer({
+                        context: context,
+                        typedArray: this.indices,
+                        usage: Cesium.BufferUsage.STATIC_DRAW,
+                        indexDatatype: Cesium.IndexDatatype.UNSIGNED_SHORT
+                    })
+                });
+
+                this.drawCommand = new Cesium.DrawCommand({
+                    modelMatrix: this.modelMatrix,
+                    vertexArray: this.vertexArray,
+                    shaderProgram: Cesium.ShaderProgram.fromCache({
+                        context: context,
+                        vertexShaderSource: 'in vec3 position; out vec3 v_position; void main() { v_position = position; gl_Position = czm_modelViewProjection * vec4(position, 1.0); }',
+                        fragmentShaderSource: 'in vec3 v_position; void main() { vec3 color = normalize(v_position) * 0.5 + 0.5; out_FragColor = vec4(color, 1.0); }',
+                        attributeLocations: { position: 0 }
+                    }),
+                    renderState: Cesium.RenderState.fromCache({
+                        depthTest: { enabled: true }
+                    }),
+                    primitiveType: Cesium.PrimitiveType.TRIANGLES, // 绘制三角面
+                    // primitiveType: Cesium.PrimitiveType.LINES, // 绘制线框
+                    pass: Cesium.Pass.OPAQUE
+                });
+            }
+
+            updatePositions() {
+                if (!this.isMoving) return;
+
+                this.frameCount = (this.frameCount + 1) % 120;
+                const breathScale = 1.0 + Math.sin(this.frameCount / 120 * Math.PI * 2) * 0.2;
+                const newPositions = new Float32Array(this.initialPositions.length);
+
+                for (let i = 0; i < this.initialPositions.length; i += 3) {
+                    newPositions[i] = this.initialPositions[i] * breathScale;
+                    newPositions[i + 1] = this.initialPositions[i + 1] * breathScale;
+                    newPositions[i + 2] = this.initialPositions[i + 2] * breathScale;
+                }
+
+                if (this.positionBuffer && !this.positionBuffer.isDestroyed()) {
+                    this.positionBuffer.copyFromArrayView(newPositions);
+                    this.currentPositions = newPositions;
+                }
+            }
+
+            update(frameState) {
+                if (!this.drawCommand) {
+                    this.createCommand(frameState.context);
+                }
+                this.updatePositions();
+                if (this.drawCommand && this.vertexArray && !this.vertexArray.isDestroyed()) {
+                    frameState.commandList.push(this.drawCommand);
+                }
+            }
+
+            startMoving() { this.isMoving = true; }
+            stopMoving() {
+                this.isMoving = false;
+                if (this.positionBuffer) {
+                    this.positionBuffer.copyFromArrayView(this.initialPositions);
+                    this.currentPositions = new Float32Array(this.initialPositions);
+                }
+            }
+            isDestroyed() { return false; }
+        }
+
+        var primitive = new DynamicPrimitive(modelMatrix);
+        viewer.scene.primitives.add(primitive);
+    </script>
+</body>
+
+</html>

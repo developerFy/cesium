@@ -38,6 +38,7 @@ package-lock.json
 yarn.lock
 
 # WebStorm user-specific
+.idea/
 .idea/workspace.xml
 .idea/tasks.xml
 .idea/shelf

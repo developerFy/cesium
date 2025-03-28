@@ -53,8 +53,15 @@
             // 可以获取修改后的值进行其他操作
             console.log(value);
         })
-        
+
         folder.open();
+
+        // 判断是否支持图像渲染像素化处理
+        const updateResolutionScale = (viewer) => {
+            if ((Cesium.FeatureDetection).supportsImageRenderingPixelated()) {
+                viewer.resolutionScale = window.devicePixelRatio;
+            }
+        }
     </script>
 </body>
 
